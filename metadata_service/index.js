@@ -1,5 +1,7 @@
 const { ApolloServer, gql } = require('apollo-server')
 const generateReview = require('./reviews')
+const ImdbAPI = require('./imdb_api')
+const { downcaseObject } = require('./utilities')
 
 const typeDefs = gql`
   type Review {
@@ -14,6 +16,19 @@ const typeDefs = gql`
     value: String!
   }
 
+  type MovieMetadata {
+    rated: String
+    released: String
+    runtime: String
+    actors: [String]
+    ratings: [Rating]
+  }
+
+  type Rating {
+    source: String
+    value: String
+  }
+
   type Reviewer {
     name: String!
     emailAddress: String!
@@ -21,6 +36,7 @@ const typeDefs = gql`
 
   type Query {
     getReviews(title: String!, number: Int = 5): [Review]
+    getMetadata(title: String!): MovieMetadata
   }
 `
 
@@ -40,6 +56,15 @@ const resolvers = {
       }
 
       return reviews
+    },
+    getMetadata: async (_, args, { dataSources }) => {
+      metadata = await dataSources.imdbApi.getMetadata(args['title'])
+      if (metadata['Response'] !== "False") {
+        metadata['Actors'] = metadata['Actors'].split(',').map(a => a.trim())
+        metadata['Ratings'] = metadata['Ratings'].map(r => downcaseObject(r))
+      }
+
+      return downcaseObject(metadata)
     }
   },
   Review: {
@@ -51,7 +76,10 @@ const resolvers = {
 
 const server = new ApolloServer({
   typeDefs,
-  resolvers
+  resolvers,
+  dataSources: () => ({
+    imdbApi: new ImdbAPI()
+  })
 })
 
 server.listen({ port: 4000 }).then(({ url }) => {
