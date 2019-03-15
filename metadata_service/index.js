@@ -6,6 +6,12 @@ const typeDefs = gql`
     rating: Int!
     comment: String!
     reviewer: Reviewer!
+    metadata: InternalMetadata!
+  }
+
+  type InternalMetadata {
+    id: ID!
+    value: String!
   }
 
   type Reviewer {
@@ -18,16 +24,27 @@ const typeDefs = gql`
   }
 `
 
+const internalMetadata = [
+  { id: 0, value: 'asdfasdf' },
+  { id: 1, value: '12312312' },
+  { id: 2, value: 'åß∂ƒßå∂ƒ' }
+]
+
 const resolvers = {
   Query: {
     getReviews: (_, args) => {
       let reviews = []
 
       for (let i = 0; i < args['number']; i++) {
-        reviews.push(generateReview(args['title']))
+        reviews.push({ ...generateReview(args['title']), internalId: Math.floor(Math.random() * 3)})
       }
 
       return reviews
+    }
+  },
+  Review: {
+    metadata: (review) => {
+      return internalMetadata.filter(m => m['id'] == review.internalId)[0]
     }
   }
 }
