@@ -13,6 +13,13 @@ const graphqlApis = [
   { name: 'metadata', uri: 'http://localhost:4000/graphql' }
 ]
 
+const linkTypeDefs = gql`
+  extend type Movie {
+    reviews(number: Int): [Review]
+    metadata: MovieMetadata
+  }
+`
+
 const createRemoteExecutableSchemas = async () => {
   let schemas = {}
 
@@ -40,13 +47,37 @@ const createRemoteExecutableSchemas = async () => {
   return schemas
 }
 
+const stitchedMovieOperation = (query, schema) => {
+  return {
+    fragment: `... on Movie { title }`,
+    resolve: (movie, _, context, info) => {
+      return info.mergeInfo.delegateToSchema({
+      schema: schema,
+      operation: 'query',
+      fieldName: query,
+      args: {
+        title: movie.title
+      },
+      context,
+      info
+      })
+    }
+  }
+}
+
 const createSchema = async () => {
   const remoteSchemas = await createRemoteExecutableSchemas()
 
-  const schemas = Object.values(remoteSchemas)
+  const schemas = [...Object.values(remoteSchemas), linkTypeDefs]
 
   return mergeSchemas({
-    schemas
+    schemas,
+    resolvers: {
+      Movie: {
+        reviews: stitchedMovieOperation('getReviews', remoteSchemas.metadata),
+        metadata: stitchedMovieOperation('getMetadata', remoteSchemas.metadata),
+      }
+    }
   })
 }
 
