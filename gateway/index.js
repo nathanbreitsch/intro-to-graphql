@@ -4,6 +4,7 @@ const {
   mergeSchemas
 } = require('graphql-tools')
 const { HttpLink } = require('apollo-link-http')
+const { setContext } = require('apollo-link-context');
 const { ApolloServer, gql } = require('apollo-server')
 const fetch = require('node-fetch')
 
@@ -16,10 +17,16 @@ const createRemoteExecutableSchemas = async () => {
   let schemas = {}
 
   for (const api of graphqlApis) {
-    const link = new HttpLink({
+    const http = new HttpLink({
       uri: api.uri,
       fetch
     })
+
+    const link = setContext((_, prev) => {
+      if (prev.graphqlContext) {
+        return ({ headers: { ...prev.graphqlContext.args } })
+      }
+    }).concat(http)
 
     const remoteSchema = await introspectSchema(link)
     const remoteExecutableSchema = makeRemoteExecutableSchema({
@@ -47,7 +54,12 @@ const runServer = async () => {
   const schema = await createSchema()
 
   const server = new ApolloServer({
-    schema
+    schema,
+    context: async ({ req }) => ({
+      args: {
+        ApiKey: req.headers['apikey'],
+      }
+    }),
   })
 
   server.listen({ port: 5000 }).then(({ url }) => {
