@@ -14,14 +14,20 @@ const typeDefs = gql`
   }
 
   type Query {
-    getReviews: [Review]
+    getReviews(title: String!, number: Int = 5): [Review]
   }
 `
 
 const resolvers = {
   Query: {
-    getReviews: () => {
-      return [generateReview('Test')]
+    getReviews: (_, args) => {
+      let reviews = []
+
+      for (let i = 0; i < args['number']; i++) {
+        reviews.push(generateReview(args['title']))
+      }
+
+      return reviews
     }
   }
 }
