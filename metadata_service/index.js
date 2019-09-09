@@ -1,18 +1,17 @@
 const { ApolloServer, gql } = require("apollo-server");
-const generateReview = require("./reviews");
-const ImdbAPI = require("./imdb_api");
-const { downcaseObject } = require("./utilities");
+const { buildFederatedSchema } = require("@apollo/federation");
+const { getMetadata, getReviews } = require("./data");
 
 const typeDefs = gql`
-  type Review {
+  type Review @key(fields: id) {
+    id: ID!
     rating: Int!
     comment: String!
     reviewer: Reviewer!
-    metadata: InternalMetadata!
+    metadata: ReviewMetadata!
   }
 
-  type InternalMetadata {
-    id: ID!
+  type ReviewMetadata {
     value: String!
   }
 
@@ -24,6 +23,13 @@ const typeDefs = gql`
     ratings: [Rating]
   }
 
+  extend type Movie @key(fields: id) {
+    id: ID! @external
+    title: String! @external
+    reviews(number: Int): [Review] @requires(fields: "title")
+    metadata: MovieMetadata @requires(fields: "title")
+  }
+
   type Rating {
     source: String
     value: String
@@ -32,11 +38,6 @@ const typeDefs = gql`
   type Reviewer {
     name: String!
     emailAddress: String!
-  }
-
-  type Query {
-    getReviews(title: String!, number: Int = 5): [Review]
-    getMetadata(title: String!): MovieMetadata
   }
 `;
 
@@ -47,42 +48,24 @@ const internalMetadata = [
 ];
 
 const resolvers = {
-  Query: {
-    getReviews: (_, args) => {
-      let reviews = [];
-
-      for (let i = 0; i < args["number"]; i++) {
-        reviews.push({
-          ...generateReview(args["title"]),
-          internalId: Math.floor(Math.random() * 3)
-        });
-      }
-
-      return reviews;
-    },
-    getMetadata: async (_, args, { dataSources }) => {
-      metadata = await dataSources.imdbApi.getMetadata(args["title"]);
-      if (metadata["Response"] !== "False") {
-        metadata["Actors"] = metadata["Actors"].split(",").map(a => a.trim());
-        metadata["Ratings"] = metadata["Ratings"].map(r => downcaseObject(r));
-      }
-
-      return downcaseObject(metadata);
-    }
+  Movie: {
+    reviews: getReviews(5),
+    metadata: getMetadata
   },
   Review: {
-    metadata: review => {
+    metadata(review) {
       return internalMetadata.filter(m => m["id"] == review.internalId)[0];
     }
   }
 };
 
 const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-  dataSources: () => ({
-    imdbApi: new ImdbAPI()
-  })
+  schema: buildFederatedSchema([
+    {
+      typeDefs,
+      resolvers
+    }
+  ])
 });
 
 server.listen({ port: 4000 }).then(({ url }) => {
